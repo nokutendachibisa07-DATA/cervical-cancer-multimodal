@@ -226,18 +226,27 @@ def compute_live_shap(model, tabular_tensor, shap_background, device):
         
         # Create a simple reference (mean image features)
         with torch.no_grad():
-            # Use zeros as reference image features (neutral baseline)
             ref_img = torch.zeros(1, 256).to(device)
         
         wrapper = TabularPathWrapper(model, ref_img).to(device)
         wrapper.eval()
         
-        explainer = shap.DeepExplainer(wrapper, bg_tensor)
+        # Use GradientExplainer (more compatible with this model)
+        explainer = shap.GradientExplainer(wrapper, bg_tensor)
         shap_vals = explainer.shap_values(tabular_tensor.to(device))
         
+        # Handle different output shapes
         if isinstance(shap_vals, list) and len(shap_vals) > 1:
-            return shap_vals[1][0]  # Abnormal class, single sample
-        return shap_vals[0]
+            sv = shap_vals[1][0]  # Abnormal class, single sample
+        else:
+            sv = shap_vals[0]
+        
+        # GradientExplainer may return (n_features, n_classes) — take abnormal column
+        sv = np.array(sv)
+        if sv.ndim == 2:
+            sv = sv[:, 1]  # Take abnormal class column
+        
+        return sv
     except Exception as e:
         st.warning(f"SHAP computation unavailable: {e}")
         return None
